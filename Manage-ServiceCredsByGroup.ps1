@@ -55,6 +55,17 @@ param (
 	[string]$ConfigFile="OpsMgrConfig.config"
 )
 
+# DECLARE VARIABLES FOR STRING COMPARISON
+[string]$upperCase="ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+[string]$lowerCase="abcdefghijklmnopqrstuvwxyz"
+
+# CONVERT ALL STRING PARAMS TO LOWER CASE
+$ManagementGroup = $ManagementGroup.ToLower()
+$RoleName = $RoleName.ToLower()
+$ServerName = $ServerName.ToLower()
+$Action = $Action.ToLower()
+
+# LOAD THE CONFIG FILE
 If(Test-Path $ConfigFile){
     [xml]$config= Get-content $ConfigFile
 } else {
@@ -63,9 +74,9 @@ If(Test-Path $ConfigFile){
 
 # Extract the list of servers and services based on parameters provided
 If($RoleName -eq "ALL") {
-    [string]$xPathRole = "/configuration/ManagementGroup[@name=""$managementGroup""]/roles/role[@active='True']"
+    [string]$xPathRole = "/configuration/ManagementGroup[translate(@name, '" + $upperCase + "','" + $lowerCase + "') = '" + $managementGroup + "']/roles/role[@active='True']"
 } Else {
-    [string]$xPathRole = "/configuration/ManagementGroup[@name=""$managementGroup""]/roles/role[@name=""$RoleName"" and @active='True']"
+    [string]$xPathRole = "/configuration/ManagementGroup[translate(@name, '" + $upperCase + "','" + $lowerCase + "') = '" + $managementGroup + "']/roles/role[translate(@name, '" + $upperCase + "','" + $lowerCase + "') = '" + $RoleName + "' and @active='True']"
 }
 # [string]$xPath = "/configuration/ManagementGroup[""$managementGroup""]/servers/server[@role=""$RoleName"" and @active='True']"
 $roles = $config.SelectNodes($xPathRole)
@@ -75,17 +86,19 @@ $tempTop = @()
 
 foreach($role in $roles){
     [string]$myRole = $role.name
+    $myRole = $myRole.ToLower()
     If($ServerName.Length -gt 0){
-        [string]$xPathServer = "/configuration/ManagementGroup[@name=""$managementGroup""]/roles/role[@name=""$myRole"" and @active='True']/servers/server[@name=""$ServerName"" and @active='True']"
+        [string]$xPathServer = "/configuration/ManagementGroup[translate(@name, '" + $upperCase + "','" + $lowerCase + "') = '" + $managementGroup + "']/roles/role[translate(@name, '" + $upperCase + "','" + $lowerCase + "') = '" + $myRole + "' and @active='True']/servers/server[contains(translate(@name, '" + $upperCase + "','" + $lowerCase + "'), '" + $ServerName + "') and @active='True']"
     } Else {
-        [string]$xPathServer = "/configuration/ManagementGroup[@name=""$managementGroup""]/roles/role[@name=""$myRole"" and @active='True']/servers/server[@active='True']"
+        [string]$xPathServer = "/configuration/ManagementGroup[translate(@name, '" + $upperCase + "','" + $lowerCase + "') = '" + $managementGroup + "']/roles/role[translate(@name, '" + $upperCase + "','" + $lowerCase + "') = '" + $myRole + "' and @active='True']/servers/server[@active='True']"
     }
     $servers = $config.SelectNodes($xPathServer)
 
     foreach($server in $servers){
         # write-host $server.GetAttribute("name")
-        $myServerName=$server.name
-        $services=$config.SelectNodes("/configuration/ManagementGroup[@name=""$managementGroup""]/roles/role[@name=""$myRole"" and @active='True']/servers/server[@name=""$myServerName"" and @active='True']/services/service")
+        [string]$myServerName=$server.name
+        $myServerName=$myServerName.ToLower()
+        $services=$config.SelectNodes("/configuration/ManagementGroup[translate(@name, '" + $upperCase + "','" + $lowerCase + "') = '" + $managementGroup+ "']/roles/role[translate(@name, '" + $upperCase + "','" + $lowerCase + "') = '" + $myRole + "' and @active='True']/servers/server[contains(translate(@name, '" + $upperCase + "','" + $lowerCase + "'), '" + $myServerName + "') and @active='True']/services/service")
 
         foreach($service in $services){
             # Write-Host $service.GetAttribute("name")
@@ -109,8 +122,18 @@ foreach($role in $roles){
 If($Action -eq "Stop"){
     # $tempTop | Sort-Object Server, stopSequence | Select Server, Service, stopSequence
     $sortedServices = $tempTop | Sort-Object roleStopSequence, serverStopSequence, serviceStopSequence
+
+    [string]$currentServer = ""
     foreach($item in $sortedServices){
-        $msg = "Attempting to stop service {0} on server {1}" -f $item.Service,$item.Server
+        [string]$thisServer = $item.Server
+
+        If($thisServer -ne $currentServer){
+            $msg = "Stopping services on {0}" -f $thisServer
+            Write-Host $msg
+        }
+        $currentServer = $thisServer
+
+        $msg = "  Attempting to stop service {0}" -f $item.Service
         write-host $msg
         if($item.Server -match $env:COMPUTERNAME){
             Stop-Service $item.Service
@@ -122,8 +145,18 @@ If($Action -eq "Stop"){
 } elseIf($Action -eq "Start") {
     # $tempTop | Sort-Object Server, startSequence | Select Server, Service, startSequence
     $sortedServices = $tempTop | Sort-Object roleStartSequence, serverStartSequence, serviceStartSequence
+
+    [string]$currentServer = ""
     foreach($item in $sortedServices){
-        $msg = "Attempting to start service {0} on server {1}" -f $item.Service,$item.Server
+        [string]$thisServer = $item.Server
+
+        If($thisServer -ne $currentServer){
+            $msg = "Starting services on {0}" -f $thisServer
+            Write-Host $msg
+        }
+        $currentServer = $thisServer
+
+        $msg = "  Attempting to start service {0}" -f $item.Service
         write-host $msg
         if($item.Server -match $env:COMPUTERNAME){
             Start-Service $item.Service
@@ -135,8 +168,18 @@ If($Action -eq "Stop"){
 } elseIf($Action -eq "Restart") {
 
     $sortedServices = $tempTop | Sort-Object roleStopSequence, serverStopSequence, serviceStopSequence
+
+    [string]$currentServer = ""
     foreach($item in $sortedServices){
-        $msg = "Attempting to stop service {0} on server {1}" -f $item.Service,$item.Server
+        [string]$thisServer = $item.Server
+
+        If($thisServer -ne $currentServer){
+            $msg = "Restarting services on {0}" -f $thisServer
+            Write-Host $msg
+        }
+        $currentServer = $thisServer
+
+        $msg = "  Attempting to stop service {0} " -f $item.Service
         write-host $msg
         if($item.Server -match $env:COMPUTERNAME){
             Stop-Service $item.Service
@@ -150,7 +193,7 @@ If($Action -eq "Stop"){
     # $tempTop | Sort-Object Server, startSequence | Select Server, Service, startSequence
     $sortedServices = $tempTop | Sort-Object roleStartSequence, serverStartSequence, serviceStartSequence
     foreach($item in $sortedServices){
-        $msg = "Attempting to start service {0} on server {1}" -f $item.Service,$item.Server
+        $msg = "  Attempting to start service {0} on server {1}" -f $item.Service,$item.Server
         write-host $msg
         if($item.Server -match $env:COMPUTERNAME){
             Start-Service $item.Service
@@ -172,11 +215,20 @@ If($Action -eq "Stop"){
 #        }
 #    }
 
+    [string]$currentServer = ""
     foreach($item in $sortedServices){
+        [string]$thisServer = $item.Server
+
+        If($thisServer -ne $currentServer){
+            $msg = "Changing password for services on {0}" -f $thisServer
+            Write-Host $msg
+        }
+        $currentServer = $thisServer
+
         If($item.credential -ne "LocalSystem"){
             # Get the new credential
             $newCredential = Get-Credential -UserName $item.credential -Message "Enter password for user account"
-            $msg = "Attempting to change password for service {0} on server {1}" -f $item.Service,$item.Server
+            $msg = "  Attempting to change password for service {0}" -f $item.Service
             write-host $msg
 
             # Retrieve the service from the remote server using WMI to validate that the current Start Account matches the UserName of the provided credential
@@ -187,19 +239,16 @@ If($Action -eq "Stop"){
 
             If($serviceState -ne "Stopped"){
                 # If the service is not in a stopped state, we probably don't want to change the password
-                $msg="Service {0} on server {1} is currently {2}; unable to change service account password!" -f $item.Service, $item.Server, $serviceState
-                write-host $msg
+                $msg="  WARNING: Service {0} on server {1} is currently {2}; unable to change service account password!" -f $item.Service, $item.Server, $serviceState
+                write-host $msg -ForegroundColor Yellow
             } Else {
                 If($currentAccount -eq $newCredential.UserName){
                     .\Set-ServiceCredential.ps1 -ServiceName $item.Service -ComputerName $item.Server -ServiceCredential $newCredential -confirm:$false -WhatIf:([bool]$WhatIfPreference.IsPresent)
                 } Else {
-                    $msg = "Cannot change the Service Account for service {0}.  Current Account: {1}.  New credential account: {2}" -f $item.Service, $currentAccount, $newCredential.UserName
-                    write-host $msg
+                    $msg = "  ERROR: Cannot change the Service Account for service {0}.  Current Account: {1}.  New credential account: {2}" -f $item.Service, $currentAccount, $newCredential.UserName
+                    write-host $msg -ForegroundColor DarkRed
                 }
             }
-        } Else {
-            $msg="Service {0} on server {1} uses a managed service account or a system account; no password to change." -f $item.Service, $item.Server
-            Write-Host $msg
         }
     }
     
@@ -208,7 +257,17 @@ If($Action -eq "Stop"){
     # Verify that the credentials in the configuration file match the Start Accounts for the configured services
     $sortedServices = $tempTop | Sort-Object roleStartSequence, serverStartSequence, serviceStartSequence
 
+    [string]$currentServer = ""
     foreach($item in $sortedServices){
+        [string]$thisServer = $item.Server
+
+        If($thisServer -ne $currentServer){
+            $msg = "Checking Services on {0}" -f $thisServer
+            Write-Host $msg
+        }
+        $currentServer = $thisServer
+            
+
         # Retrieve the service from the remote server using WMI to validate that the current Start Account matches the UserName of the provided credential
         [string]$wmiQuery = "SELECT StartName FROM Win32_Service WHERE Name='" + $item.Service + "'"
         $objService=get-wmiObject -query $wmiQuery -ComputerName $item.Server
@@ -216,20 +275,28 @@ If($Action -eq "Stop"){
 
         If($currentAccount.SubString($currentAccount.Length-1,1) -eq "$"){
             # Account ending in $ is Managed Service Account; don't change it
-            $msg="READY: Service {0} on Server {1} uses a managed service account {2}" -f $item.Service, $item.Server, $currentAccount
+            [string]$status = "Normal"
+            [string]$msg="READY: Service {0}  uses a managed service account {1}" -f $item.Service, $currentAccount
         } ElseIf ($item.Credential -eq "LocalSystem"){
             # Need a better test here, but we don't want to mess with local system account
-            $msg="READY: Service {0} on Server {1} uses a system account {2}" -f $item.Service, $item.Server, $currentAccount
+            [string]$status = "Normal"
+            [string]$msg="  READY: Service {0} uses a system account {1}" -f $item.Service, $currentAccount
         } Else {
             # Verify that the service account name matches the service account name in the configuration file
             If($currentAccount -eq $item.credential){
-                $msg="READY: Service {0} on Server {1} using account {2} is verified to match configuration file!" -f $item.Service, $item.Server, $item.Credential
+            [string]$status = "Normal"
+                [string]$msg="  READY: Service {0} on using account {1} is verified to match configuration file!" -f $item.Service, $item.Credential
             } Else {
-                $msg="ERROR: Service {0} on Server {1} using account {2} does not match configuration file: {3}!" -f $item.Service, $item.Server, $currentAccount, $item.Credential
+                [string]$status = "Error"
+                [string]$msg="  ERROR: Service {0} on using account {1} does not match configuration file: {2}!" -f $item.Service, $currentAccount, $item.Credential
             }
 
-        }        
-        write-host $msg
+        }
+        if($status -eq "Normal") {
+            write-host $msg -ForegroundColor Green
+        } Else {
+            Write-Host $msg -ForegroundColor DarkRed
+        }
     }
 
 }
