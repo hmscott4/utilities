@@ -3,10 +3,7 @@
 Hugh Scott
 2018/01/10
 
-PowerShell scripts used to:
-Stop/start/restart services across multiple servers in a fixed, predictable sequence
-Change passwords for services acroess multiple servers
+A catch-all repository of useful PowerShell Scripts:
+- ManageService Credentials by Group: Manage multiple, related services across multiple services in sequence
+- Escalate SCOM Alert: rule-based script to manage alerts in SCOM
 
-IMPORTANT:
-Copy files to a single directory
-Modify the configuration file as necessary
